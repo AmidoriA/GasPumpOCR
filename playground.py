@@ -6,8 +6,9 @@ from ImageProcessing import FrameProcessor, ProcessingVariables
 from DisplayUtils.TileDisplay import show_img, reset_tiles
 
 window_name = 'Playground'
-file_name = 'tests/single_line/49A95.jpg'
-version = '_2_0'
+file_name = 'tests/single_line/7A13Z.jpg'
+file_name = '/home/tan/ocr/recognize-digits/869707x.png'
+version = '_2_1'
 
 erode = ProcessingVariables.erode
 threshold = ProcessingVariables.threshold

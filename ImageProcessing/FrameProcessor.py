@@ -56,7 +56,9 @@ class FrameProcessor:
 
         # Adjust the exposure
         exposure_img = cv2.multiply(self.img, np.array([alpha]))
-        debug_images.append(('Exposure Adjust', exposure_img))
+        exposure_img = self.original
+        # debug_images.append(('Exposure Adjust', exposure_img))
+
 
         # Convert to grayscale
         img2gray = cv2.cvtColor(exposure_img, cv2.COLOR_BGR2GRAY)
@@ -96,11 +98,13 @@ class FrameProcessor:
         total_digit_y = 0
 
         # Aspect ratio for all non 1 character digits
-        desired_aspect = 0.6
+        desired_aspect = 0.8
         # Aspect ratio for the "1" digit
         digit_one_aspect = 0.3
         # The allowed buffer in the aspect when determining digits
-        aspect_buffer = 0.15
+        aspect_buffer = 0.35
+
+        second_potential_contours = []
 
         # Loop over all the contours collecting potential digits and decimals
         for contour in contours:
@@ -118,11 +122,11 @@ class FrameProcessor:
             if size < 20 * 100 and (aspect < 1 - aspect_buffer and aspect > 1 + aspect_buffer):
                 continue
 
-            # Ignore any rectangles where the width is greater than the height
-            if w > h:
-                if self.debug:
-                    cv2.rectangle(self.img, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                continue
+            # # Ignore any rectangles where the width is greater than the height
+            # if w > h:
+            #     if self.debug:
+            #         cv2.rectangle(self.img, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            #     continue
 
             # If the contour is of decent size and fits the aspect ratios we want, we'll save it
             if ((size > 2000 and aspect >= desired_aspect - aspect_buffer and aspect <= desired_aspect + aspect_buffer) or
@@ -133,14 +137,75 @@ class FrameProcessor:
                 potential_digits.append(contour)
             else:
                 if self.debug:
-                    cv2.rectangle(self.img, (x, y), (x + w, y + h), (0, 0, 255), 2)
+                    cv2.rectangle(self.img, (x, y), (x + w, y + h), (100, 100, 255), 2)
+                second_potential_contours.append(contour)
+                
+        potential_digit_recs = [cv2.boundingRect(pot_digit) for pot_digit in potential_digits]
 
+        for idx, second_potential_contour in enumerate(second_potential_contours):
+            [x, y, w, h] = cv2.boundingRect(second_potential_contour)
+            for check in second_potential_contours:
+                pass
+                [x_, y_, w_, h_] = cv2.boundingRect(check)
+                if [x, y, w, h] == [x_, y_, w_, h_]:
+                    continue
+                # if w > 20:
+                    # cv2.putText(self.img, str(x), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 0), 2)
+                    # cv2.putText(self.img, str(w), (0,0), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 0), 2)
+                    # pass
+                if x < x_ and x_ < x + w:
+                    new_x = x
+                    new_x_2 = x_+w_#+w
+                    if x_+w_ < x+w:
+                        new_x_2 = x + w
+                    if y > y_:
+                        tmp_y = y
+                        y = y_
+                        y_ = tmp_y
+                    new_y = y
+                    new_y_2 = y+h+h_#+h_
+                    new_w = new_x_2 - new_x
+                    new_h = new_y_2 - new_y
+
+                    aspect = float(new_w) / new_h
+                    size = new_w * new_h
+
+                    # If the contour is of decent size and fits the aspect ratios we want, we'll save it
+                    if ((size > 2000 and aspect >= desired_aspect - aspect_buffer and aspect <= desired_aspect + aspect_buffer) or
+                        (size > 1000 and aspect >= digit_one_aspect - aspect_buffer and aspect <= digit_one_aspect + aspect_buffer)):
+                        # Keep track of the height and y position so we can run averages later
+                        total_digit_height += new_h
+                        total_digit_y += new_y
+                        # potential_digits.append(contour)
+                        potential_digit_recs.append((new_x, new_y, new_w, new_h))
+
+                    else:
+                        if self.debug:
+                            cv2.putText(self.img, "{0:.2f}".format(aspect), (x, y+30), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 0), 2)
+                            cv2.rectangle(self.img, (x, y), (x + w, y + h), (0, 0, 255), 2)
+                    # print x
+                    # print x_
+
+            
+
+        # for idx, second_potential_contour in enumerate(second_potential_contours):
+        #     [x, y, w, h] = cv2.boundingRect(second_potential_contour)
+        #     if self.debug:
+        #         cv2.rectangle(self.img, (x, y), (x + w, y + h), (0, 0, 255), 2)
+        #         # cv2.putText(self.img, str(size), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 0), 2)
+        #         # cv2.putText(self.img, "{0:.2f}".format(aspect), (x, y+20), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
+        #     continue
+        # cv2.drawContours(self.img, contours, -1, (0,255,0), 3)
         avg_digit_height = 0
         avg_digit_y = 0
-        potential_digits_count = len(potential_digits)
+        potential_digits_count = len(potential_digit_recs)
         left_most_digit = 0
         right_most_digit = 0
         digit_x_positions = []
+        
+        print(potential_digit_recs)
+        potential_digit_recs.sort(key=lambda tup: tup[0])
+        print(potential_digit_recs)
 
         # Calculate the average digit height and y position so we can determine what we can throw out
         if potential_digits_count > 0:
@@ -153,8 +218,10 @@ class FrameProcessor:
         ix = 0
 
         # Loop over all the potential digits and see if they are candidates to run through KNN to get the digit
-        for pot_digit in potential_digits:
-            [x, y, w, h] = cv2.boundingRect(pot_digit)
+        # for pot_digit in potential_digits:
+        for potential_digit_rec in potential_digit_recs:
+            # [x, y, w, h] = cv2.boundingRect(pot_digit)
+            (x, y, w, h) = potential_digit_rec
 
             # Does this contour match the averages
             if h <= avg_digit_height * 1.2 and h >= avg_digit_height * 0.2 and y <= avg_digit_height * 1.2 and y >= avg_digit_y * 0.2:

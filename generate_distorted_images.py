@@ -60,7 +60,7 @@ def process_directory(folder):
 
 
 def main():
-    img_file = 'training/7/7_1079_crop_3.png'
+    img_file = 'training/8/8-th.png'
     show = True
 
     if len(sys.argv) == 2:
